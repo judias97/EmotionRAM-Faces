@@ -1,0 +1,12 @@
+
+*.pyc
+
+*.png
+
+.vscode/
+
+*.json
+
+data/
+
+wandb/
