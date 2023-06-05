@@ -17,6 +17,8 @@ from data_loaders import CAERSDataset
 from utils import get_transform, accuracy, accuracy_julia
 from model import model_generator
 from tqdm import tqdm
+import os.path as osp
+from keras.models import load_model
 
 print(torch.cuda.is_available())
 
@@ -30,10 +32,10 @@ def main():
     #   Você vai fazer uma viagem
     #   Antes da viagem, preparamos a mala e o carro, por exemplo
     #   Se no meio da viagem, você ficar sem óleo no motor, o que vc faz?
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") ## Se a maquina não tiver GPU o teste será rodado na CPU
     train_dataset = CAERSDataset('data/CAER-S', 'data/train.txt', transforms=get_transform(train=True))
-    test_dataset = CAERSDataset('data/CAER-S', 'data/test.txt', transforms=get_transform(train=False))
-    val_dataset = CAERSDataset('data/CAER-S', 'data/val.txt', transforms=get_transform(train=False))
+    test_dataset = CAERSDataset('data/CAER-S', 'data/val.txt', transforms=get_transform(train=False))
+    val_dataset = CAERSDataset('data/CAER-S', 'data/test.txt', transforms=get_transform(train=False))
 
     train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=False)
@@ -46,8 +48,10 @@ def main():
     lr_scheduler = StepLR(opt, 60, 0.4)
 
     best_model_acc = 0.0
+    lowest_loss = 1
+    count_ep = 0
 
-    for epoch in tqdm(range(260), desc="Main loop", position=0, leave=True):
+    for epoch in tqdm(range(10), desc="Main loop", position=0, leave=True):
         model.train() ## coloca o modelo no modo treino
         running_loss = 0.0
 
@@ -68,7 +72,7 @@ def main():
                 train_outs.extend(torch.argmax(preds, dim=1))##malu
                 train_gts.extend(label.to('cpu'))##malu
 
-                pbar.set_description(f'Train acc: {accuracy(preds, label)} :: Train loss: {running_loss.item()}')##malu
+                ##pbar.set_description(f'BACH Train acc: {accuracy(preds, label)} :: Train loss: {running_loss.item()}')##malu
                 pbar.update(1)
 
         train_acc = accuracy_julia(train_outs, train_gts)##malu
@@ -94,10 +98,10 @@ def main():
                     running_loss = loss(preds, label)
                     test_outs.extend(torch.argmax(preds, dim=1))##malu
                     test_gts.extend(label.to('cpu'))##malu
-                    pbar_1.set_description(f'Test acc: {accuracy(preds, label)} :: Test loss: {running_loss.item()}')##malu
+                    ##pbar_1.set_description(f'BACH :: Test acc: {accuracy(preds, label)} :: Test loss: {running_loss.item()}')##malu
                     pbar_1.update(1)
 
-        test_acc = accuracy(preds, label)##malu
+        test_acc = accuracy_julia(test_outs,test_gts)
         print(f'test :: acc {test_acc} :: loss {running_loss}')
 
         wandb.log({
@@ -107,10 +111,30 @@ def main():
         })
 
 
-        if test_acc > best_model_acc:
-            best_model_acc = test_acc
-            torch.save(model.state_dict(), 'checkpoints/model_best.pth')
-            print(f'test :: new best_acc of {best_model_acc}')
+        # ##if test_acc > best_model_acc:
+        #   ##  best_model_acc = test_acc
+        #     #torch.save(model.state_dict(), 'checkpoints/model_best.pth')
+        #     torch.save(model, f'models\\model_best_{str(epoch)}_{str(test_acc*100)}.pth')
+        #     print(f'test :: new best_acc of {best_model_acc}')
+
+        
+
+        if running_loss < lowest_loss:
+            lowest_loss = running_loss
+            #torch.save(model.state_dict(), 'checkpoints/model_best.pth')
+            torch.save(model, f'models\\lowest_loss_{str(epoch)}_{str(running_loss*100)}.pth')
+            print(f'test :: new lowest loss of {lowest_loss}')
+            count_ep = 0
+        
+        else :
+            count_ep = count_ep +1 
+            if count_ep==20:
+                print("Early stop")
+                quit()
+
+
+
+        #torch.save(model.state_dict(), 'EmotionRAM-Faces\models'+ str(epoch) + '.h5')
 
         model.eval()
         running_loss = 0.0
@@ -127,18 +151,24 @@ def main():
                     running_loss = loss(preds, label)
                     val_outs.extend(torch.argmax(preds, dim=1))##malu
                     val_gts.extend(label.to('cpu'))##malu
-                    pbar_2.set_description(f'val acc: {accuracy(preds, label)} :: val loss: {running_loss.item()}')##malu
+                    ##pbar_2.set_description(f'BACH val acc: {accuracy(preds, label)} :: val loss: {running_loss.item()}')##malu
                     
                     pbar_2.update(1)
 
-        val_acc = accuracy(preds, label) ##malu
+        val_acc = accuracy_julia(val_outs,val_gts)
         print(f'val :: acc {val_acc} :: loss {running_loss}')
         wandb.log({
             'val_acc': val_acc,
             'val_loss': running_loss,
             'epoch': epoch
         })
+        
+        ##model_path = 'EmotionRAM-Faces\models'
+        ##model.save(model_path, str(epoch) + 'model.h5')
+        ##torch.save(model, f'models\\faces_{str(epoch)}_{str(test_acc*100)}.pth')
+       
 
+        
 if __name__ == '__main__':
     wandb.init(project="EmotionRAM-faces")
     main()
