@@ -67,9 +67,11 @@ class ResizeFaceContext(object):
             face_size = (face_size, face_size)
 
         face = sample['face']
+        face_resized = np.resize(face,face_size)
+        face_resized = Image.fromarray(face_resized)
 
         return {
-            'face': transforms.Resize(face_size)(face)
+            'face': face_resized
         }
 
 class Crop(object):
@@ -116,7 +118,7 @@ def get_transform(train=True):
     return transforms.Compose([
         ApplyPadding(712),
         ResizeFaceContext((96)),
-        (Crop((133, 237), "train") if train else Crop((133, 237), "test")),
+        # (Crop((133, 237), "train") if train else Crop((133, 237), "test")),
         ToTensorAndNormalize()
     ])
 
